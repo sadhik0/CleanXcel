@@ -180,6 +180,48 @@
   .dz-icon svg{ width:22px; height:22px; }
   .dz-title{ font-family:'Fraunces', serif; font-size: 22px; font-weight:600; margin: 0 0 8px; }
   .dz-sub{ font-size: 14px; color: var(--ink-soft); margin: 0 0 26px; }
+  .dz-scope{
+    margin: 18px 0 0;
+    font-size: 11.5px;
+    line-height:1.5;
+    color: var(--ink-soft);
+    border-top: 1px dashed var(--line-light);
+    padding-top: 14px;
+  }
+  .file-error{
+    display:none;
+    margin: 14px 0 0;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    color: #8f3524;
+    background: rgba(200,84,63,.1);
+    border: 1px solid rgba(200,84,63,.3);
+    padding: 10px 12px;
+    text-align:left;
+  }
+  .file-error.show{ display:block; }
+  .download-notice{
+    display:none;
+    width:100%;
+    margin-top: 4px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    color: #8f3524;
+  }
+  .download-notice.show{ display:block; }
+
+  /* ---------- Focus visibility (desktop keyboard use) ---------- */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  [tabindex]:focus-visible{
+    outline: 2px solid var(--verified);
+    outline-offset: 2px;
+  }
+  .dropzone:focus-visible, .ledger:focus-visible{
+    outline: 2px solid var(--verified);
+    outline-offset: 2px;
+  }
   input[type=file]{ display:none; }
   .btn{
     display:inline-flex; align-items:center; gap:8px;
@@ -408,22 +450,24 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12M12 3l-4 4M12 3l4 4"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
           </div>
           <p class="dz-title">Drop your file here</p>
-          <p class="dz-sub">.xlsx &middot; .xls &middot; .csv &mdash; processed entirely in your browser</p>
-          <label class="btn" for="fileInput">Choose file</label>
-          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
+          <p class="dz-sub">.xlsx &middot; .csv &mdash; processed entirely in your browser, up to 15&nbsp;MB</p>
+          <button type="button" class="btn" id="chooseFileBtn">Choose file</button>
+          <input type="file" id="fileInput" accept=".xlsx,.csv" style="position:absolute; width:1px; height:1px; opacity:0; pointer-events:none;" />
           <div class="file-chip" id="fileChip">
             <span class="fname" id="fileName"></span>
             <span class="fsize" id="fileSize"></span>
           </div>
+          <p class="file-error" id="fileError" role="alert"></p>
           <div class="run-row">
             <button class="btn primary" id="runBtn" disabled>Run cleaning</button>
             <button class="btn ghost" id="resetBtn" style="display:none;">Reset</button>
           </div>
+          <p class="dz-scope">Scope: XLSX &amp; CSV, first worksheet only, values only &mdash; formulas, formatting and other sheets aren&rsquo;t preserved in the cleaned export.</p>
         </div>
       </div>
 
       <div class="ledger">
-        <div class="ledger-head"><span>Audit log</span><span id="ledgerStatus">idle</span></div>
+        <div class="ledger-head"><span>Audit log</span><span id="ledgerStatus" aria-live="polite">idle</span></div>
         <div class="ledger-body" id="ledgerBody">
           <div class="ledger-empty">Every transformation is written here as it happens &mdash; this becomes your PDF report.</div>
         </div>
@@ -442,6 +486,7 @@
       <div class="downloads">
         <button class="btn primary" id="downloadXlsx">Download cleaned Excel (.xlsx)</button>
         <button class="btn ghost" id="downloadPdf">Download validation report (.pdf)</button>
+        <p class="download-notice" id="downloadNotice" role="alert"></p>
       </div>
     </div>
   </section>
@@ -493,9 +538,11 @@
   ============================================================ */
   const dropzone   = document.getElementById('dropzone');
   const fileInput  = document.getElementById('fileInput');
+  const chooseFileBtn = document.getElementById('chooseFileBtn');
   const fileChip   = document.getElementById('fileChip');
   const fileName   = document.getElementById('fileName');
   const fileSize   = document.getElementById('fileSize');
+  const fileError  = document.getElementById('fileError');
   const runBtn     = document.getElementById('runBtn');
   const resetBtn   = document.getElementById('resetBtn');
   const ledgerBody = document.getElementById('ledgerBody');
@@ -507,6 +554,7 @@
   const resultsTs = document.getElementById('resultsTs');
   const downloadXlsxBtn = document.getElementById('downloadXlsx');
   const downloadPdfBtn  = document.getElementById('downloadPdf');
+  const downloadNotice  = document.getElementById('downloadNotice');
 
   let currentFile = null;
   let lastRun = null; // holds everything needed for downloads
@@ -514,11 +562,35 @@
   /* ---- Help modal ---- */
   const helpLink = document.getElementById('helpLink');
   const helpOverlay = document.getElementById('helpOverlay');
+  const helpModal = helpOverlay.querySelector('.modal');
   const helpClose = document.getElementById('helpClose');
-  helpLink.addEventListener('click', e=>{ e.preventDefault(); helpOverlay.classList.add('show'); });
-  helpClose.addEventListener('click', ()=> helpOverlay.classList.remove('show'));
-  helpOverlay.addEventListener('click', e=>{ if (e.target === helpOverlay) helpOverlay.classList.remove('show'); });
-  document.addEventListener('keydown', e=>{ if (e.key === 'Escape') helpOverlay.classList.remove('show'); });
+  let helpReturnFocus = null;
+
+  function openHelp(){
+    helpReturnFocus = document.activeElement;
+    helpOverlay.classList.add('show');
+    helpClose.focus();
+  }
+  function closeHelp(){
+    helpOverlay.classList.remove('show');
+    if (helpReturnFocus && typeof helpReturnFocus.focus === 'function') helpReturnFocus.focus();
+  }
+
+  helpLink.addEventListener('click', e=>{ e.preventDefault(); openHelp(); });
+  helpClose.addEventListener('click', closeHelp);
+  helpOverlay.addEventListener('click', e=>{ if (e.target === helpOverlay) closeHelp(); });
+  document.addEventListener('keydown', e=>{
+    if (!helpOverlay.classList.contains('show')) return;
+    if (e.key === 'Escape'){ closeHelp(); return; }
+    if (e.key === 'Tab'){
+      // Simple focus trap: keep Tab cycling within the modal.
+      const focusable = helpModal.querySelectorAll('button, [href], input, [tabindex]:not([tabindex="-1"])');
+      if (!focusable.length) return;
+      const first = focusable[0], last = focusable[focusable.length-1];
+      if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    }
+  });
 
   /* ============================================================
      1. Fixed standards (no user prompts, ever)
@@ -537,6 +609,9 @@
   /* ============================================================
      2. Upload handling
   ============================================================ */
+  const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB — keeps everything on the main thread responsive
+  const ALLOWED_EXT = /\.(xlsx|csv)$/i;
+
   ['dragenter','dragover'].forEach(evt=>{
     dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
   });
@@ -547,12 +622,33 @@
     const f = e.dataTransfer.files && e.dataTransfer.files[0];
     if (f) setFile(f);
   });
+  chooseFileBtn.addEventListener('click', ()=> fileInput.click());
   fileInput.addEventListener('change', e=>{
     const f = e.target.files && e.target.files[0];
     if (f) setFile(f);
   });
 
+  function showFileError(msg){
+    fileError.textContent = msg;
+    fileError.classList.add('show');
+    fileChip.classList.remove('show');
+    runBtn.disabled = true;
+    currentFile = null;
+  }
+
   function setFile(f){
+    fileError.classList.remove('show');
+    fileError.textContent = '';
+
+    if (!ALLOWED_EXT.test(f.name)){
+      showFileError('Unsupported file type. Please upload an .xlsx or .csv file (legacy .xls is not supported).');
+      return;
+    }
+    if (f.size > MAX_FILE_SIZE){
+      showFileError('This file is ' + formatBytes(f.size) + ' — please keep uploads under ' + formatBytes(MAX_FILE_SIZE) + ' so the browser tab doesn\u2019t freeze.');
+      return;
+    }
+
     currentFile = f;
     fileName.textContent = f.name;
     fileSize.textContent = formatBytes(f.size);
@@ -570,19 +666,32 @@
     currentFile = null;
     fileInput.value = '';
     fileChip.classList.remove('show');
+    fileError.classList.remove('show');
+    fileError.textContent = '';
     runBtn.disabled = true;
     resetBtn.style.display = 'none';
     results.classList.remove('show');
+    downloadNotice.classList.remove('show');
     ledgerBody.innerHTML = '<div class="ledger-empty">Every transformation is written here as it happens &mdash; this becomes your PDF report.</div>';
     ledgerStatus.textContent = 'idle';
   });
 
-  runBtn.addEventListener('click', ()=>{
+  runBtn.addEventListener('click', async ()=>{
     if (!currentFile) return;
     runBtn.disabled = true;
     resetBtn.style.display = 'none';
     results.classList.remove('show');
-    processFile(currentFile);
+    try{
+      await processFile(currentFile);
+    } catch(err){
+      console.error(err);
+      ledgerLine('ERROR', 'Unexpected error: ' + err.message, 'cut');
+      ledgerStatus.textContent = 'failed';
+    } finally{
+      // Always leave the UI usable again, whatever happened.
+      if (currentFile) runBtn.disabled = false;
+      resetBtn.style.display = 'inline-flex';
+    }
   });
 
   /* ============================================================
@@ -592,7 +701,13 @@
   function ledgerLine(tag, text, cls){
     const row = document.createElement('div');
     row.className = 'line ' + (cls||'info');
-    row.innerHTML = '<span class="tag">' + tag + '</span><span>' + text + '</span>';
+    const tagSpan = document.createElement('span');
+    tagSpan.className = 'tag';
+    tagSpan.textContent = tag;
+    const textSpan = document.createElement('span');
+    textSpan.textContent = text;
+    row.appendChild(tagSpan);
+    row.appendChild(textSpan);
     ledgerBody.appendChild(row);
     ledgerBody.scrollTop = ledgerBody.scrollHeight;
   }
@@ -605,7 +720,7 @@
     const isCsv = /\.csv$/i.test(file.name);
     if (isCsv){
       const text = await file.text();
-      return parseCsv(text);
+      return { rows: parseCsv(text), sheetCount: 1, sheetName: null };
     }
     const buf = await file.arrayBuffer();
     const wb = new ExcelJS.Workbook();
@@ -621,7 +736,7 @@
       }
       rows.push(vals);
     });
-    return rows;
+    return { rows, sheetCount: wb.worksheets.length, sheetName: ws.name };
   }
 
   function cellToValue(cell){
@@ -743,6 +858,14 @@
     if (typeof v === 'number') return v;
     return parseFloat(String(v).trim().replace(/,/g,''));
   }
+  // Codes like "00123" or "0042" are numeric-looking but converting them to a
+  // plain number would strip the leading zero and change what the value means
+  // (an account/employee/product code, not a quantity). Never touch these.
+  function isLeadingZeroCode(v){
+    if (typeof v !== 'string') return false;
+    const s = v.trim().replace(/,/g,'');
+    return /^0\d/.test(s);
+  }
 
   function toTitleCase(header){
     const words = String(header)
@@ -769,9 +892,11 @@
 
     record('READ', 'Reading "' + file.name + '"', 'info'); await pushLog();
 
-    let raw;
+    let raw, sheetInfo;
     try{
-      raw = await readFileToRows(file);
+      const result = await readFileToRows(file);
+      raw = result.rows;
+      sheetInfo = result;
     } catch(err){
       record('ERROR', 'Could not parse this file: ' + err.message, 'cut'); await pushLog();
       ledgerStatus.textContent = 'failed';
@@ -784,12 +909,16 @@
       return;
     }
 
+    if (sheetInfo.sheetCount > 1){
+      record('INFO', 'Workbook has ' + sheetInfo.sheetCount + ' sheets \u2014 only "' + sheetInfo.sheetName + '" (the first) is processed. Other sheets are not included.', 'flag'); await pushLog();
+    }
+
     const originalColCount = Math.max(...raw.map(r=>r.length));
     let headers = (raw[0]||[]).slice();
     while (headers.length < originalColCount) headers.push('');
     const originalRowCount = raw.length - 1;
 
-    record('INFO', originalRowCount.toLocaleString() + ' rows &times; ' + originalColCount + ' columns detected', 'info'); await pushLog();
+    record('INFO', originalRowCount.toLocaleString() + ' rows \u00d7 ' + originalColCount + ' columns detected', 'info'); await pushLog();
 
     // assign original row numbers (Excel row = index+2, header is row 1)
     let dataRows = raw.slice(1).map((cells, idx)=>{
@@ -885,7 +1014,9 @@
       let type = 'text';
       if (vals.length){
         const dateHits = vals.filter(v=>parseFlexibleDate(v)).length;
-        const numHits  = vals.filter(v=>looksNumeric(v)).length;
+        // Leading-zero codes (00123) don't count as numeric evidence — safer to
+        // under-detect a numeric column than to risk reformatting real codes.
+        const numHits  = vals.filter(v=>looksNumeric(v) && !isLeadingZeroCode(v)).length;
         if (headerLooksDate || dateHits/vals.length >= 0.6) type = 'date';
         else if (numHits/vals.length >= 0.6) type = 'numeric';
       }
@@ -893,7 +1024,7 @@
     }
 
     /* ---- G. Standardize dates / convert numerics, collect invalid-value exceptions ---- */
-    let dateCount = 0, numCount = 0, invalidDateCount = 0, invalidNumCount = 0;
+    let dateCount = 0, numCount = 0, invalidDateCount = 0, invalidNumCount = 0, preservedCodeCount = 0;
     dataRows.forEach(r=>{
       for (let c=0; c<colCount; c++){
         const v = r.cells[c];
@@ -908,7 +1039,11 @@
             exceptions.push({ row:r.origRow, column: headers[c], value:String(v), issue:'Invalid date value', action:'Highlighted', kind:'invalid', colIdx:c });
           }
         } else if (colTypes[c] === 'numeric'){
-          if (looksNumeric(v)){
+          if (isLeadingZeroCode(v)){
+            // Left exactly as-is: converting "00123" to 123 would silently
+            // change the value, not just its format.
+            preservedCodeCount++;
+          } else if (looksNumeric(v)){
             const n = toNumber(v);
             if (typeof v !== 'number'){ numCount++; }
             r.cells[c] = n; // kept as a plain number, never auto-formatted as currency
@@ -921,6 +1056,7 @@
     });
     if (dateCount){ bump('datesStandardized', dateCount); record('FIX', dateCount.toLocaleString() + ' date value(s) standardized to DD-MM-YYYY', 'ok'); await pushLog(); }
     if (numCount){ bump('numericConverted', numCount); record('FIX', numCount.toLocaleString() + ' text value(s) converted to numeric type (kept as numbers, not currency)', 'ok'); await pushLog(); }
+    if (preservedCodeCount){ bump('preservedCodes', preservedCodeCount); record('INFO', preservedCodeCount.toLocaleString() + ' leading-zero code(s) left untouched (e.g. "00123") to avoid changing their meaning', 'info'); await pushLog(); }
     if (invalidDateCount){ record('FLAG', invalidDateCount.toLocaleString() + ' invalid date value(s) highlighted', 'flag'); await pushLog(); }
     if (invalidNumCount){ record('FLAG', invalidNumCount.toLocaleString() + ' invalid numeric value(s) highlighted', 'flag'); await pushLog(); }
 
@@ -1074,7 +1210,7 @@
       let html = '<table class="exceptions-table"><thead><tr><th>Row</th><th>Column</th><th>Value</th><th>Issue</th><th>Action</th></tr></thead><tbody>';
       shown.forEach(e=>{
         const pillClass = e.kind === 'invalid' ? 'invalid' : (e.kind === 'conflict' ? 'conflict' : 'missing');
-        html += '<tr><td class="mono">' + e.row + '</td><td>' + escapeHtml(e.column) + '</td><td class="mono">' + escapeHtml(e.value) + '</td><td>' + escapeHtml(e.issue) + '</td><td><span class="pill ' + pillClass + '">' + e.action + '</span></td></tr>';
+        html += '<tr><td class="mono">' + e.row + '</td><td>' + escapeHtml(e.column) + '</td><td class="mono">' + escapeHtml(e.value) + '</td><td>' + escapeHtml(e.issue) + '</td><td><span class="pill ' + pillClass + '">' + escapeHtml(e.action) + '</span></td></tr>';
       });
       html += '</tbody></table>';
       exceptionsWrap.innerHTML = html;
@@ -1101,12 +1237,17 @@
   ============================================================ */
   downloadXlsxBtn.addEventListener('click', async ()=>{
     if (!lastRun) return;
+    downloadNotice.classList.remove('show');
     downloadXlsxBtn.disabled = true;
     downloadXlsxBtn.textContent = 'Building workbook…';
     try{
       const blob = await buildCleanedWorkbook(lastRun);
       const outName = lastRun.fileName.replace(/\.[^.]+$/, '') + '_Cleaned.xlsx';
       triggerDownload(blob, outName);
+    } catch(err){
+      console.error(err);
+      downloadNotice.textContent = 'Could not build the Excel file: ' + err.message + '. Please try again.';
+      downloadNotice.classList.add('show');
     } finally {
       downloadXlsxBtn.disabled = false;
       downloadXlsxBtn.textContent = 'Download cleaned Excel (.xlsx)';
@@ -1164,7 +1305,20 @@
   ============================================================ */
   downloadPdfBtn.addEventListener('click', ()=>{
     if (!lastRun) return;
-    buildPdfReport(lastRun);
+    downloadNotice.classList.remove('show');
+    downloadPdfBtn.disabled = true;
+    const originalLabel = downloadPdfBtn.textContent;
+    downloadPdfBtn.textContent = 'Building report…';
+    try{
+      buildPdfReport(lastRun);
+    } catch(err){
+      console.error(err);
+      downloadNotice.textContent = 'Could not build the PDF report: ' + err.message + '. Please try again.';
+      downloadNotice.classList.add('show');
+    } finally {
+      downloadPdfBtn.disabled = false;
+      downloadPdfBtn.textContent = originalLabel;
+    }
   });
 
   function buildPdfReport(run){
@@ -1212,6 +1366,7 @@
     if (a.datesStandardized) actionRows.push([a.datesStandardized.toLocaleString() + ' date value(s) standardized to ' + STANDARDS.dateOutputFormat]);
     if (a.whitespace) actionRows.push([a.whitespace.toLocaleString() + ' whitespace correction(s) performed']);
     if (a.numericConverted) actionRows.push([a.numericConverted.toLocaleString() + ' text value(s) converted to numeric type']);
+    if (a.preservedCodes) actionRows.push([a.preservedCodes.toLocaleString() + ' leading-zero code(s) preserved exactly (not converted to numbers)']);
     if (a.missing) actionRows.push([a.missing.toLocaleString() + ' missing value(s) flagged']);
     if (a.partialDuplicates) actionRows.push([a.partialDuplicates.toLocaleString() + ' row(s) flagged as possible partial duplicates (human review)']);
     if (!actionRows.length) actionRows.push(['No corrective actions were required.']);
