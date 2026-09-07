@@ -151,6 +151,8 @@
   }
   @media (max-width: 880px){ .studio{ grid-template-columns: 1fr; } }
 
+  .ledger-col{ display:flex; flex-direction:column; gap: 24px; }
+
   .dropzone{
     background: var(--paper);
     color: var(--ink);
@@ -349,7 +351,6 @@
   /* ---------- Quick downloads (under the audit log) ---------- */
   .quick-downloads{
     display:none;
-    margin-top: 18px;
     background: var(--paper);
     color: var(--ink);
     border-radius: var(--radius);
@@ -485,20 +486,22 @@
         </div>
       </div>
 
-      <div class="ledger">
-        <div class="ledger-head"><span>Audit log</span><span id="ledgerStatus" aria-live="polite">idle</span></div>
-        <div class="ledger-body" id="ledgerBody">
-          <div class="ledger-empty">Every transformation is written here as it happens &mdash; this becomes your PDF report.</div>
+      <div class="ledger-col">
+        <div class="ledger">
+          <div class="ledger-head"><span>Audit log</span><span id="ledgerStatus" aria-live="polite">idle</span></div>
+          <div class="ledger-body" id="ledgerBody">
+            <div class="ledger-empty">Every transformation is written here as it happens &mdash; this becomes your PDF report.</div>
+          </div>
         </div>
-      </div>
 
-      <div class="quick-downloads" id="quickDownloads">
-        <p class="qd-label">Files are ready &mdash; no need to scroll down:</p>
-        <div class="qd-buttons">
-          <button class="btn primary" id="downloadXlsxTop">Download cleaned Excel (.xlsx)</button>
-          <button class="btn ghost" id="downloadPdfTop">Download validation report (.pdf)</button>
+        <div class="quick-downloads" id="quickDownloads">
+          <p class="qd-label">Files are ready &mdash; no need to scroll down:</p>
+          <div class="qd-buttons">
+            <button class="btn primary" id="downloadXlsxTop">Download cleaned Excel (.xlsx)</button>
+            <button class="btn ghost" id="downloadPdfTop">Download validation report (.pdf)</button>
+          </div>
+          <p class="download-notice" id="downloadNoticeTop" role="alert"></p>
         </div>
-        <p class="download-notice" id="downloadNoticeTop" role="alert"></p>
       </div>
     </div>
   </section>
