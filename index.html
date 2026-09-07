@@ -346,6 +346,25 @@
 
   .downloads{ display:flex; gap:14px; flex-wrap:wrap; padding-top: 8px; border-top: 1px dashed var(--line-light); }
 
+  /* ---------- Quick downloads (under the audit log) ---------- */
+  .quick-downloads{
+    display:none;
+    margin-top: 18px;
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: var(--radius);
+    box-shadow: var(--paper-shadow);
+    padding: 20px 22px 22px;
+  }
+  .quick-downloads.show{ display:block; }
+  .qd-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11.5px; letter-spacing:.04em;
+    color: var(--ink-soft);
+    margin: 0 0 14px;
+  }
+  .qd-buttons{ display:flex; gap: 12px; flex-wrap:wrap; }
+
   /* ---------- Pipeline section ---------- */
   .section{ padding: 70px 0; border-top: 1px solid var(--line-dark); }
   .section-head{ margin-bottom: 46px; max-width: 60ch; }
@@ -472,6 +491,15 @@
           <div class="ledger-empty">Every transformation is written here as it happens &mdash; this becomes your PDF report.</div>
         </div>
       </div>
+
+      <div class="quick-downloads" id="quickDownloads">
+        <p class="qd-label">Files are ready &mdash; no need to scroll down:</p>
+        <div class="qd-buttons">
+          <button class="btn primary" id="downloadXlsxTop">Download cleaned Excel (.xlsx)</button>
+          <button class="btn ghost" id="downloadPdfTop">Download validation report (.pdf)</button>
+        </div>
+        <p class="download-notice" id="downloadNoticeTop" role="alert"></p>
+      </div>
     </div>
   </section>
 
@@ -555,6 +583,10 @@
   const downloadXlsxBtn = document.getElementById('downloadXlsx');
   const downloadPdfBtn  = document.getElementById('downloadPdf');
   const downloadNotice  = document.getElementById('downloadNotice');
+  const quickDownloads    = document.getElementById('quickDownloads');
+  const downloadXlsxTopBtn = document.getElementById('downloadXlsxTop');
+  const downloadPdfTopBtn  = document.getElementById('downloadPdfTop');
+  const downloadNoticeTop  = document.getElementById('downloadNoticeTop');
 
   let currentFile = null;
   let lastRun = null; // holds everything needed for downloads
@@ -672,6 +704,8 @@
     resetBtn.style.display = 'none';
     results.classList.remove('show');
     downloadNotice.classList.remove('show');
+    quickDownloads.classList.remove('show');
+    downloadNoticeTop.classList.remove('show');
     ledgerBody.innerHTML = '<div class="ledger-empty">Every transformation is written here as it happens &mdash; this becomes your PDF report.</div>';
     ledgerStatus.textContent = 'idle';
   });
@@ -1224,8 +1258,8 @@
       exceptionsWrap.innerHTML = '<p style="color:var(--ink-soft);font-size:14px;">No exceptions found \u2014 every value parsed cleanly.</p>';
     }
 
+    quickDownloads.classList.add('show');
     results.classList.add('show');
-    results.scrollIntoView({ behavior:'smooth', block:'start' });
   }
 
   function escapeHtml(s){
@@ -1235,24 +1269,27 @@
   /* ============================================================
      8. Download: cleaned Excel
   ============================================================ */
-  downloadXlsxBtn.addEventListener('click', async ()=>{
+  async function runXlsxDownload(btn, notice){
     if (!lastRun) return;
-    downloadNotice.classList.remove('show');
-    downloadXlsxBtn.disabled = true;
-    downloadXlsxBtn.textContent = 'Building workbook…';
+    notice.classList.remove('show');
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Building workbook…';
     try{
       const blob = await buildCleanedWorkbook(lastRun);
       const outName = lastRun.fileName.replace(/\.[^.]+$/, '') + '_Cleaned.xlsx';
       triggerDownload(blob, outName);
     } catch(err){
       console.error(err);
-      downloadNotice.textContent = 'Could not build the Excel file: ' + err.message + '. Please try again.';
-      downloadNotice.classList.add('show');
+      notice.textContent = 'Could not build the Excel file: ' + err.message + '. Please try again.';
+      notice.classList.add('show');
     } finally {
-      downloadXlsxBtn.disabled = false;
-      downloadXlsxBtn.textContent = 'Download cleaned Excel (.xlsx)';
+      btn.disabled = false;
+      btn.textContent = originalLabel;
     }
-  });
+  }
+  downloadXlsxBtn.addEventListener('click', ()=> runXlsxDownload(downloadXlsxBtn, downloadNotice));
+  downloadXlsxTopBtn.addEventListener('click', ()=> runXlsxDownload(downloadXlsxTopBtn, downloadNoticeTop));
 
   async function buildCleanedWorkbook(run){
     const wb = new ExcelJS.Workbook();
@@ -1303,23 +1340,25 @@
   /* ============================================================
      9. Download: PDF report
   ============================================================ */
-  downloadPdfBtn.addEventListener('click', ()=>{
+  function runPdfDownload(btn, notice){
     if (!lastRun) return;
-    downloadNotice.classList.remove('show');
-    downloadPdfBtn.disabled = true;
-    const originalLabel = downloadPdfBtn.textContent;
-    downloadPdfBtn.textContent = 'Building report…';
+    notice.classList.remove('show');
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Building report…';
     try{
       buildPdfReport(lastRun);
     } catch(err){
       console.error(err);
-      downloadNotice.textContent = 'Could not build the PDF report: ' + err.message + '. Please try again.';
-      downloadNotice.classList.add('show');
+      notice.textContent = 'Could not build the PDF report: ' + err.message + '. Please try again.';
+      notice.classList.add('show');
     } finally {
-      downloadPdfBtn.disabled = false;
-      downloadPdfBtn.textContent = originalLabel;
+      btn.disabled = false;
+      btn.textContent = originalLabel;
     }
-  });
+  }
+  downloadPdfBtn.addEventListener('click', ()=> runPdfDownload(downloadPdfBtn, downloadNotice));
+  downloadPdfTopBtn.addEventListener('click', ()=> runPdfDownload(downloadPdfTopBtn, downloadNoticeTop));
 
   function buildPdfReport(run){
     const { jsPDF } = window.jspdf;
